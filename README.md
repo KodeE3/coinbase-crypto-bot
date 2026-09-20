@@ -68,3 +68,38 @@ and deployment are not implemented.
 Tests cover accounting, costs, exposure, gaps, no-lookahead, duplicate runs,
 restart persistence, risk halts, pagination and invalid data. GitHub Actions is
 configured for Windows/Linux and Python 3.11-3.13.
+
+## Experimental strategy presets
+
+The baseline remains the default. Three optional research presets are available:
+
+| Preset | Entry | Exit / stop |
+|---|---|---|
+| slow_trend | Prior SMA 50 above SMA 200 | Trend reversal / 4% fixed stop |
+| weekly_breakout | Prior close above the preceding 168 closes and its SMA 200 | Prior close below preceding 72 closes or SMA 200 / 4% fixed stop |
+| weekly_breakout_trailing | Same breakout entry | Same signal exit / 6% trailing stop |
+
+Breakout presets require 200 completed warmup hours. Trailing stops rise using
+only the previous completed close, never the current candle's high. Wider stops
+reduce position size under the same 0.5% planned risk limit. The daily loss,
+drawdown, exposure and three-loss permanent halt limits are unchanged.
+
+```powershell
+python -m bot backtest --csv candles.csv --strategy weekly_breakout --out breakout.json
+python -m bot paper --strategy weekly_breakout --db breakout-paper.sqlite3
+```
+
+Use a separate paper database when changing strategy. Existing baseline databases
+remain compatible. No candidate is automatically promoted: the weekly breakout
+earned +2.24% in development but lost in both later internal validation segments.
+Higher modeled costs also erased its development gain. See
+[research findings](research/findings.md) for periods and limitations.
+
+To reproduce the fixed 36-scenario research comparison with the saved hourly data:
+
+```powershell
+python research/compare_strategies.py --csv ../backtest-study/btc-usd-hourly-with-gaps.csv --out research-results
+```
+
+This runner validates contiguous data within each chosen segment. It does not fill
+gaps, skip active positions across gaps, or use observations on/after 2026-02-20.

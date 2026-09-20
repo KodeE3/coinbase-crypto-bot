@@ -6,7 +6,7 @@ from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
 
-from .engine import Config, Engine, State
+from .engine import Config, Engine, State, PRESETS, make_config
 from .market import fetch, read_csv, write_csv
 
 
@@ -18,11 +18,11 @@ def paper(path, cfg, kill=False):
         db.execute('BEGIN IMMEDIATE')
         row = db.execute('SELECT config, data FROM state WHERE id=1').fetchone()
         encoded = json.dumps(asdict(cfg), sort_keys=True)
-        if row and row[0] != encoded:
+        if row and Config(**json.loads(row[0])) != cfg:
             raise ValueError('Configuration differs from saved session; use a new database')
         engine = Engine(cfg, State(**json.loads(row[1])) if row else None)
         end = int(time.time()) // 3600 * 3600
-        start = engine.s.last + 3600 if row else end - cfg.slow * 3600
+        start = engine.s.last + 3600 if row else end - cfg.history_size * 3600
         if row and end - start > 72 * 3600:
             raise ValueError('Session is over 72 hours behind; inspect it before starting a new session')
         if kill:
@@ -31,7 +31,7 @@ def paper(path, cfg, kill=False):
             candles = fetch(start, end)
             if not row:
                 # Warm up indicators without inventing historic startup trades.
-                engine.s.closes = [c.close for c in candles][-cfg.slow:]
+                engine.s.closes = [c.close for c in candles][-cfg.history_size:]
                 engine.s.last = candles[-1].time
             else:
                 for candle in candles:
@@ -56,6 +56,7 @@ def main():
     p.add_argument('--watch', action='store_true')
     p.add_argument('--kill-file', default='STOP')
     for command in (b, p):
+        command.add_argument('--strategy', choices=PRESETS, default='baseline', help='Research preset; baseline remains the default')
         command.add_argument('--fee', type=float, default=0.006, help='Assumed fee per side, e.g. 0.006 = 0.6%%')
         command.add_argument('--slippage', type=float, default=0.001)
     args = parser.parse_args()
@@ -68,10 +69,10 @@ def main():
             write_csv(args.out, candles)
             print(f'Saved {len(candles)} completed BTC-USD hourly candles to {args.out}')
         elif args.command == 'backtest':
-            cfg = Config(fee=args.fee, slippage=args.slippage)
+            cfg = make_config(args.strategy, fee=args.fee, slippage=args.slippage)
             candles = read_csv(args.csv)
-            if len(candles) <= cfg.slow:
-                raise ValueError('Need more than 50 hourly candles for this strategy')
+            if len(candles) <= cfg.history_size:
+                raise ValueError(f'Need more than {cfg.history_size} hourly candles for this strategy')
             engine, events = Engine(cfg), []
             for candle in candles:
                 events.extend(engine.step(candle))
@@ -79,7 +80,7 @@ def main():
             Path(args.out).write_text(json.dumps({'config': asdict(cfg), 'summary': report, 'trades': events}, indent=2), encoding='utf-8')
             print(json.dumps(report, indent=2))
         else:
-            cfg = Config(fee=args.fee, slippage=args.slippage)
+            cfg = make_config(args.strategy, fee=args.fee, slippage=args.slippage)
             while True:
                 print(json.dumps(paper(args.db, cfg, Path(args.kill_file).exists()), indent=2), flush=True)
                 if not args.watch:

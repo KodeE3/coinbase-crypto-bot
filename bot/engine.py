@@ -16,10 +16,22 @@ class Config:
     daily_loss: float = 0.02
     max_drawdown: float = 0.10
     max_losses: int = 3
+    strategy: str = 'sma'
+    breakout_window: int = 168
+    exit_window: int = 72
+    trailing: bool = False
+
+    @property
+    def history_size(self):
+        return max(self.slow, self.breakout_window + 1, self.exit_window + 1) if self.strategy == 'breakout' else self.slow
 
     def __post_init__(self):
-        if not all(math.isfinite(v) for v in asdict(self).values()):
+        if self.strategy not in ('sma', 'breakout'):
+            raise ValueError('Unknown strategy')
+        if not all(math.isfinite(v) for k, v in asdict(self).items() if k != 'strategy'):
             raise ValueError('Configuration must be finite')
+        if any(type(v) is not int or v < 1 for v in (self.fast, self.slow, self.max_losses, self.breakout_window, self.exit_window)):
+            raise ValueError('Lookbacks and loss count must be positive integers')
         if not 1 <= self.fast < self.slow or self.initial_cash <= 0 or self.max_losses < 1:
             raise ValueError('Invalid cash, SMA windows, or loss limit')
         for key in ('risk', 'max_exposure', 'stop_pct', 'daily_loss', 'max_drawdown'):
@@ -76,17 +88,24 @@ class Engine:
                 s.halted = True
 
         # Only previous completed closes inform this bar's opening decision.
-        ready = len(s.closes) >= cfg.slow
+        ready = len(s.closes) >= cfg.history_size
         trend = ready and sum(s.closes[-cfg.fast:]) / cfg.fast > sum(s.closes[-cfg.slow:]) / cfg.slow
+        entry, leave = trend, not trend
+        if cfg.strategy == 'breakout':
+            entry = ready and s.closes[-1] > max(s.closes[-cfg.breakout_window-1:-1]) and s.closes[-1] > sum(s.closes[-cfg.slow:]) / cfg.slow
+            leave = ready and (s.closes[-1] < min(s.closes[-cfg.exit_window-1:-1]) or s.closes[-1] < sum(s.closes[-cfg.slow:]) / cfg.slow)
+        # Only prior completed closes can raise the stop for this candle.
+        if s.qty and cfg.trailing and s.closes:
+            s.stop = max(s.stop, s.closes[-1] * (1 - cfg.stop_pct))
         if equity_open <= s.peak * (1 - cfg.max_drawdown):
             s.halted = True
         if equity_open <= s.day_equity * (1 - cfg.daily_loss):
             s.daily_halted = True
         exited = False
-        if s.qty and (s.halted or s.daily_halted or not trend):
+        if s.qty and (s.halted or s.daily_halted or leave):
             sell(c.open, 'risk_halt' if s.halted or s.daily_halted else 'trend_exit')
             exited = True
-        if not s.qty and trend and not exited and not s.halted and not s.daily_halted:
+        if not s.qty and entry and not exited and not s.halted and not s.daily_halted:
             fill = c.open * (1 + cfg.slippage)
             stop = fill * (1 - cfg.stop_pct)
             loss_per_unit = fill * (1 + cfg.fee) - stop * (1 - cfg.slippage) * (1 - cfg.fee)
@@ -94,7 +113,7 @@ class Engine:
             s.qty, s.stop = qty, stop
             s.cost = qty * fill * (1 + cfg.fee)
             s.cash -= s.cost
-            events.append({'side': 'buy', 'price': fill, 'qty': qty, 'fee': qty * fill * cfg.fee, 'pnl': None, 'reason': 'sma_trend'})
+            events.append({'side': 'buy', 'price': fill, 'qty': qty, 'fee': qty * fill * cfg.fee, 'pnl': None, 'reason': 'sma_trend' if cfg.strategy == 'sma' else 'weekly_breakout'})
         if s.qty and c.low <= s.stop:
             sell(min(c.open, s.stop), 'stop_loss')
         equity = s.cash + s.qty * c.close
@@ -105,7 +124,7 @@ class Engine:
         if equity <= s.peak * (1 - cfg.max_drawdown):
             s.halted = True
         s.last = c.time
-        s.closes = (s.closes + [c.close])[-cfg.slow:]
+        s.closes = (s.closes + [c.close])[-cfg.history_size:]
         for event in events:
             event['time'] = c.time
         return events
@@ -122,3 +141,17 @@ class Engine:
                 'profit_factor': sum(p for p in pnl if p > 0) / losses if losses else None,
                 'expectancy_usd': sum(pnl) / len(pnl) if pnl else None,
                 'open_btc': s.qty, 'cash': s.cash, 'halted': s.halted, 'daily_halted': s.daily_halted}
+
+
+PRESETS = {
+    'baseline': {},
+    'slow_trend': {'fast': 50, 'slow': 200, 'stop_pct': .04},
+    'weekly_breakout': {'strategy': 'breakout', 'fast': 50, 'slow': 200, 'stop_pct': .04},
+    'weekly_breakout_trailing': {'strategy': 'breakout', 'fast': 50, 'slow': 200, 'stop_pct': .06, 'trailing': True},
+}
+
+
+def make_config(preset='baseline', **costs):
+    if preset not in PRESETS:
+        raise ValueError('Unknown strategy preset')
+    return Config(**(PRESETS[preset] | costs))
