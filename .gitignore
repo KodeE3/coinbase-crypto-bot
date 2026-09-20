@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local simulation artifacts
+*.sqlite3*
+candles.csv
+backtest.json
+STOP
