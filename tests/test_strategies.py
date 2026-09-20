@@ -87,5 +87,34 @@ class StrategyTests(unittest.TestCase):
     def test_reject_fractional_lookback(self):
         with self.assertRaises(ValueError):Config(slow=50.5)
 
+    def test_rising_filter_blocks_falling_and_flat_average(self):
+        for prices in ([110,110,90,100,105], [100,100,90,95,105]):
+            cfg=self.config(rising_trend_hours=2)
+            e=Engine(cfg,State(cash=10000,peak=10000,closes=list(prices),last=4*3600))
+            self.assertEqual(e.step(bar(5,106)),[])
+
+    def test_rising_filter_uses_only_previous_closes(self):
+        cfg=self.config(rising_trend_hours=2)
+        a=Engine(cfg,State(cash=10000,peak=10000,closes=[80,85,90,100,105],last=4*3600))
+        b=Engine(cfg,State(**asdict(a.s)))
+        x=a.step(bar(5,120,low=106,high=120,opening=106))
+        y=b.step(bar(5,106))
+        self.assertEqual(x[0],y[0])
+        self.assertEqual(x[0]['side'],'buy')
+
+    def test_rising_filter_does_not_change_exit_rules(self):
+        cfg=self.config(rising_trend_hours=2)
+        e=Engine(cfg,State(cash=9000,qty=10,cost=1000,stop=80,peak=10000,
+                           closes=[110,110,90,100,105],last=4*3600))
+        self.assertEqual(e.step(bar(5,106)),[])
+        self.assertEqual(e.s.qty,10)
+
+    def test_rising_filter_warmup_and_validation(self):
+        cfg=Config(strategy='breakout',slow=200,rising_trend_hours=24)
+        self.assertEqual(cfg.history_size,224)
+        for lag in [-1,1.5]:
+            with self.assertRaises(ValueError):Config(strategy='breakout',rising_trend_hours=lag)
+        with self.assertRaises(ValueError):Config(rising_trend_hours=24)
+
 
 if __name__=='__main__':unittest.main()

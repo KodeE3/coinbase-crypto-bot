@@ -103,3 +103,16 @@ python research/compare_strategies.py --csv ../backtest-study/btc-usd-hourly-wit
 
 This runner validates contiguous data within each chosen segment. It does not fill
 gaps, skip active positions across gaps, or use observations on/after 2026-02-20.
+
+### Trade diagnosis
+
+[Trade-level findings](research/trade-diagnosis.md) separate price losses from
+fees and slippage and document a rejected rising-SMA entry filter. The filter
+reduced development return from 2.24% to 1.88% and is not enabled in any preset.
+Its opt-in research configuration (`rising_trend_hours=24`) requires 224 prior
+hours and changes entry eligibility only. Default behavior remains unchanged.
+
+```powershell
+python research/diagnose_trades.py --runs ../strategy-improvement/experiments.json --csv ../backtest-study/btc-usd-hourly-with-gaps.csv --out diagnosis-results
+python research/test_rising_filter.py --csv ../backtest-study/btc-usd-hourly-with-gaps.csv --out filter-development.json
+```

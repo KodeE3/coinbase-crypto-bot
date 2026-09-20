@@ -20,14 +20,19 @@ class Config:
     breakout_window: int = 168
     exit_window: int = 72
     trailing: bool = False
+    rising_trend_hours: int = 0
 
     @property
     def history_size(self):
-        return max(self.slow, self.breakout_window + 1, self.exit_window + 1) if self.strategy == 'breakout' else self.slow
+        return max(self.slow + self.rising_trend_hours, self.breakout_window + 1, self.exit_window + 1) if self.strategy == 'breakout' else self.slow
 
     def __post_init__(self):
         if self.strategy not in ('sma', 'breakout'):
             raise ValueError('Unknown strategy')
+        if type(self.rising_trend_hours) is not int or self.rising_trend_hours < 0:
+            raise ValueError('Rising trend lookback must be a non-negative integer')
+        if self.rising_trend_hours and self.strategy != 'breakout':
+            raise ValueError('Rising trend filter requires breakout strategy')
         if not all(math.isfinite(v) for k, v in asdict(self).items() if k != 'strategy'):
             raise ValueError('Configuration must be finite')
         if any(type(v) is not int or v < 1 for v in (self.fast, self.slow, self.max_losses, self.breakout_window, self.exit_window)):
@@ -94,6 +99,9 @@ class Engine:
         if cfg.strategy == 'breakout':
             entry = ready and s.closes[-1] > max(s.closes[-cfg.breakout_window-1:-1]) and s.closes[-1] > sum(s.closes[-cfg.slow:]) / cfg.slow
             leave = ready and (s.closes[-1] < min(s.closes[-cfg.exit_window-1:-1]) or s.closes[-1] < sum(s.closes[-cfg.slow:]) / cfg.slow)
+            if entry and cfg.rising_trend_hours:
+                lag = cfg.rising_trend_hours
+                entry = sum(s.closes[-cfg.slow:]) > sum(s.closes[-cfg.slow-lag:-lag])
         # Only prior completed closes can raise the stop for this candle.
         if s.qty and cfg.trailing and s.closes:
             s.stop = max(s.stop, s.closes[-1] * (1 - cfg.stop_pct))
