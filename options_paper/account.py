@@ -29,6 +29,9 @@ class Account:
             seq INTEGER PRIMARY KEY, recorded_at TEXT NOT NULL, kind TEXT NOT NULL,
             position_id TEXT NOT NULL, quote_as_of TEXT NOT NULL,
             price_cents INTEGER NOT NULL, fee_cents INTEGER NOT NULL, pnl_cents INTEGER);
+        CREATE TABLE IF NOT EXISTS marks (
+            position_id TEXT PRIMARY KEY, bid_cents INTEGER NOT NULL,
+            ask_cents INTEGER NOT NULL, as_of TEXT NOT NULL, assessed_at TEXT NOT NULL);
         ''')
         initial = cents(starting_cash)
         if initial <= 0:
@@ -99,7 +102,8 @@ class Account:
             self._event('buy', proposal['id'], proposal['snapshot_as_of'], ask, None, now)
         return self.status()
 
-    def sell(self, contract, bid, as_of, confirmation, now=None):
+    def sell(self, contract, bid, as_of, confirmation, now=None,
+             expected_position_id=None, expected_quote=None):
         if confirmation != contract:
             raise ValueError('Contract confirmation did not match')
         price = cents(bid)
@@ -108,6 +112,14 @@ class Account:
             position = self.db.execute("SELECT * FROM positions WHERE contract=? AND status='open'", (contract,)).fetchone()
             if not position:
                 raise ValueError('No open position for this contract')
+            if expected_position_id is not None and position['id'] != expected_position_id:
+                raise ValueError('Position changed; review the exit again')
+            mark = self.db.execute('SELECT * FROM marks WHERE position_id=?', (position['id'],)).fetchone()
+            if expected_quote is not None and (not mark or
+                    (mark['as_of'], mark['bid_cents']) != expected_quote):
+                raise ValueError('Quote changed; review the exit again')
+            if mark and observed < timestamp(mark['as_of']):
+                raise ValueError('Exit quote is older than the saved quote')
             if observed < timestamp(position['opened_as_of']):
                 raise ValueError('Exit quote predates entry')
             if observed.date().isoformat() >= position['expiry']:
