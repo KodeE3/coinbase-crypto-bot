@@ -2,6 +2,7 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
+import re
 
 
 def money(value):
@@ -16,6 +17,8 @@ def money(value):
 
 def timestamp(value):
     try:
+        # Providers may use nanosecond RFC3339 timestamps; datetime uses microseconds.
+        value = re.sub(r'(\.\d{6})\d+', r'\1', value)
         result = datetime.fromisoformat(value.replace('Z', '+00:00'))
     except (AttributeError, TypeError, ValueError) as exc:
         raise ValueError('Timestamp must be ISO format with a timezone') from exc

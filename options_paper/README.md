@@ -1,6 +1,6 @@
 # Options paper account
 
-An educational simulator for one-contract long calls. No broker connection, live quotes, or real orders. The signal is an unvalidated 5-day/10-day moving-average example. All demo prices are fictional.
+An educational simulator for one-contract long calls. No broker order connection or real orders. An optional read-only Alpaca adapter fetches market data. The signal is an unvalidated 5-day/10-day moving-average example. All demo prices are fictional.
 
 ## Try a complete trade
 
@@ -109,4 +109,43 @@ In snapshot mode (omit `--demo`), quote ages are checked against the actual cloc
 
 Partial batches are allowed, but missing or stale quotes make total estimated equity unavailable. This avoids presenting a partially priced portfolio as a complete balance. Total estimated equity is cash plus all usable net sale values, not verified brokerage equity. Entry risk limits still use initial cash plus realized P/L; they do not use these unrealized estimates. The daily loss guard still measures realized losses only.
 
-A quote or position that changes while approval is pending must be reviewed again. The database migration adds a marks table without resetting existing cash, positions, or history. Quotes come from supplied files; automated market data acquisition remains a future step.
+A quote or position that changes while approval is pending must be reviewed again. The database migration adds a marks table without resetting existing cash, positions, or history. Quotes can come from supplied files or the optional Alpaca refresh command below.
+
+
+## Connect Alpaca market data (optional)
+
+The adapter makes GET requests only to `https://data.alpaca.markets`. It never submits an order or reads a brokerage account balance. It uses the standard library; no package installation is required. Requests have a 10-second timeout, bounded response size, and no credential-forwarding redirects. Errors do not print API keys or provider response bodies.
+
+Set these two environment variables through your GitHub Codespaces secrets, with repository access enabled, then restart your Codespace:
+
+- `APCA_API_KEY_ID`
+- `APCA_API_SECRET_KEY`
+
+Use credentials from your Alpaca account. Do not put keys in source code, commit them, or paste them into chat. This module does not automatically load `.env` files. No subscriptions are purchased by the code.
+
+Test the stock-data connection:
+
+```bash
+python -m options_paper.market_data --symbol SPY
+```
+
+This returns completed daily closes, timestamps and the explicitly selected `iex` feed (one exchange, not consolidated market coverage). Today's daily bar is excluded using America/New_York time. `--stock-feed sip` requests consolidated data if entitled. Pagination and an eleven-completed-bar minimum are checked. This diagnostic is informational and does not by itself select or buy an option.
+
+To check options access, append `--contracts` followed by actual, unexpired standard option symbols from your provider. Fictional `DEMO-...` symbols are rejected. Option quotes explicitly request `opra`; Alpaca documents that the alternative `indicative` feed has modified quotes and delayed trades, so there is no automatic fallback. OPRA access depends on your data entitlement. A 403 error means you should check access before proceeding, not change your broker account or purchase anything blindly.
+
+Refresh the actual-symbol positions already in the local snapshot simulation account:
+
+```bash
+python -m options_paper.cli --refresh-quotes
+python -m options_paper.cli --refresh-quotes --review-exits
+```
+
+Use `--account path/to/account.sqlite3` if you previously selected a custom account. No open positions means no network call. `--demo` is incompatible with provider refresh. The first command saves and values the quotes without trading. The second prompts for each suggested simulated exit, fetches that quote again after confirmation, and refuses the sale if its bid or exit eligibility changed. An unchanged price with a newer timestamp can proceed. Original quote timestamps are retained; stale/future/missing/invalid quotes reject the entire update rather than generating substitute prices. Outside market hours, quotes may fail the 15-minute freshness rule; that is expected.
+
+This is an on-demand refresh, not a background streaming service. The previous file-based buy workflow remains: automatic contract discovery, open-interest/volume enrichment, and automatic entry snapshot assembly are not implemented. Historical stock bars alone cannot validate an options strategy. No claim of successful live authentication is made until the diagnostic runs with your own configured credentials.
+
+Provider references:
+
+- https://docs.alpaca.markets/us/reference/optionlatestquotes
+- https://docs.alpaca.markets/us/reference/stockbars
+- https://docs.github.com/en/codespaces/managing-your-codespaces/managing-your-account-specific-secrets-for-github-codespaces

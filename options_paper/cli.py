@@ -7,6 +7,7 @@ from pathlib import Path
 from .account import Account, FEE
 from .engine import propose, timestamp
 from .quotes import save_quotes, valuation, approve_exit
+from .market_data import AlpacaData
 
 
 def display(state):
@@ -48,19 +49,22 @@ def main(argv=None):
     actions.add_argument('--history', action='store_true')
     actions.add_argument('--close', metavar='CONTRACT')
     actions.add_argument('--quotes', type=Path, help='save a batch of updated option quotes and evaluate exits')
+    actions.add_argument('--refresh-quotes', action='store_true', help='fetch Alpaca OPRA quotes for open simulated positions')
     parser.add_argument('--review-exits', action='store_true', help='with --quotes, prompt for each suggested simulated exit')
     parser.add_argument('--bid', help='illustrative exit bid, dollars per option share')
     parser.add_argument('--as-of', help='exit quote timestamp including timezone')
     args = parser.parse_args(argv)
-    if args.review_exits and not args.quotes:
-        parser.error('--review-exits requires --quotes')
+    if args.review_exits and not (args.quotes or args.refresh_quotes):
+        parser.error('--review-exits requires --quotes or --refresh-quotes')
+    if args.demo and args.refresh_quotes:
+        parser.error('Provider quotes cannot be mixed with the fictional demo account')
     if args.demo and args.snapshot:
         parser.error('--demo cannot be combined with --snapshot')
     if (args.bid is not None or args.as_of) and not args.close:
         parser.error('--bid and --as-of require --close')
     if args.close and (args.bid is None or (not args.demo and not args.as_of)):
         parser.error('--close requires --bid and, outside demo mode, --as-of')
-    if not any([args.demo, args.snapshot, args.status, args.history, args.close, args.quotes]):
+    if not any([args.demo, args.snapshot, args.status, args.history, args.close, args.quotes, args.refresh_quotes]):
         parser.error('Choose --demo, --snapshot, --status, --history, --close, or --quotes')
     account = None
     try:
@@ -71,8 +75,18 @@ def main(argv=None):
         if args.status:
             display(account.status())
             display_quotes(valuation(account))
-        elif args.quotes:
-            snapshot = json.loads(args.quotes.read_text(encoding='utf-8'))
+        elif args.quotes or args.refresh_quotes:
+            client = None
+            if args.refresh_quotes:
+                contracts = [p['contract'] for p in account.status()['positions']]
+                if not contracts:
+                    print('No open simulated positions to refresh.')
+                    return 0
+                client = AlpacaData()
+                snapshot = client.option_quotes(contracts)
+                print('Source: Alpaca OPRA. Refresh runs once per command; trades remain simulated.')
+            else:
+                snapshot = json.loads(args.quotes.read_text(encoding='utf-8'))
             report = save_quotes(account, snapshot)
             display_quotes(report)
             if args.review_exits:
@@ -85,6 +99,12 @@ def main(argv=None):
                         print('Skipped; position remains open.')
                         continue
                     try:
+                        if client:
+                            updated = save_quotes(account, client.option_quotes([candidate['contract']]))
+                            latest = next((p for p in updated['positions'] if p['position_id'] == candidate['position_id']), None)
+                            if not latest or not latest['usable'] or not latest['reasons'] or latest['bid_cents'] != candidate['bid_cents']:
+                                raise ValueError('Price or exit rule changed during approval; run refresh again to review.')
+                            candidate = latest
                         display(approve_exit(account, candidate, typed))
                     except ValueError as exc:
                         print(f'Exit not recorded: {exc}')
