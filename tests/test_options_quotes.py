@@ -136,6 +136,14 @@ class QuoteTests(unittest.TestCase):
                               expected_position_id=self.p['id'],
                               expected_quote=(candidate['quote_as_of'], candidate['bid_cents']))
 
+    def test_manual_exit_cannot_reprice_saved_timestamp(self):
+        self.save('2.30')
+        with self.assertRaisesRegex(ValueError, 'new quote timestamp'):
+            self.account.sell(self.p['contract'], '9.99', NOW.isoformat(), self.p['contract'])
+        self.assertEqual(len(self.account.history()), 1)
+        state = self.account.sell(self.p['contract'], '2.30', NOW.isoformat(), self.p['contract'])
+        self.assertEqual(state['realized_pnl_cents'], 7870)
+
     def test_cli_preview_skip_then_approve(self):
         def run(*args, answer=''):
             result = subprocess.run([sys.executable, '-m', 'options_paper.cli', '--demo', '--account', str(self.path), *args],

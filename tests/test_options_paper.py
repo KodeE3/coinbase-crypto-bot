@@ -118,6 +118,22 @@ class PaperTests(unittest.TestCase):
         finally:
             other.close()
 
+    def test_daily_stop_uses_utc_recording_day_with_offset_clock(self):
+        utc_now = datetime(2026, 9, 23, 1, tzinfo=timezone.utc)
+        for n in range(2):
+            p = dict(self.proposal, id=str(n), underlying=str(n), contract=str(n))
+            self.account.buy(p, p['contract'], now=utc_now)
+            self.account.sell(p['contract'], '0', SAMPLE['as_of'], p['contract'], now=utc_now)
+        local_now = utc_now.astimezone(timezone(timedelta(hours=-4)))
+        with self.assertRaisesRegex(ValueError, 'Daily'):
+            self.account.buy(self.proposal, self.proposal['contract'], now=local_now)
+        self.assertEqual(len(self.account.history()), 4)
+
+    def test_closes_must_be_a_list_not_characters_or_mapping(self):
+        for malformed in ['11111222223', {str(n): n for n in range(11)}]:
+            result = propose(dict(SAMPLE, closes=malformed), demo=True)
+            self.assertIn('must be a list', result['rejected'])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -2,6 +2,21 @@
 
 An educational simulator for one-contract long calls. No broker order connection or real orders. An optional read-only Alpaca adapter fetches market data. The signal is an unvalidated 5-day/10-day moving-average example. All demo prices are fictional.
 
+## Unattended offline demo
+
+```bash
+python -m options_paper.demo
+```
+
+This command completes one fictional buy, account restart, quote update and profit-target sale
+without any prompts, credentials or network access. It always creates a fresh temporary
+account and deletes it afterward; it does not open your saved accounts. The JSON report shows
+cash falling from $10,000 to $9,849.35 at entry, then ending at $10,078.70 with $78.70 fictional
+realized P/L. Both $0.65 fees are included. Repeated runs produce the same report. The command
+terminates after the example and does not monitor markets or validate profitability.
+
+The regular commands below retain their explicit simulated-trade confirmation prompts.
+
 ## Try a complete trade
 
 From the repository root, with Python 3.10 or newer (no packages to install):
@@ -47,7 +62,7 @@ The demo intentionally replays its fixed date, including a default exit quote da
 - Entry including the illustrative $0.65 fee cannot exceed the smaller of $200 or 2% of initial cash plus realized P/L.
 - Aggregate open entry costs cannot exceed 10% of that same capital figure; entries also require sufficient cash.
 - A 2% of initial-cash daily realized loss limit blocks further entries for that UTC recording date. It is not an unrealized-loss stop.
-- Closing requires the exact contract confirmation and a nonnegative bid. Exit quotes must not predate entry. Expiry-day and later closes are rejected because settlement/exercise is not implemented.
+- Closing requires the exact contract confirmation and a nonnegative bid. Exit quotes must not predate entry or the saved quote, and cannot change the saved bid at the same timestamp. Expiry-day and later closes are rejected because settlement/exercise is not implemented.
 
 `--status` reports open cost basis plus estimated net sale values when saved quotes are usable. Suggested exits always require approval; they are not automatic orders. The $0.65 fee and risk limits are tutorial assumptions, not broker pricing or personalized advice. Long options may lose their entire premium; exercise obligations are outside this simulator.
 

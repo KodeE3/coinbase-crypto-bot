@@ -91,7 +91,7 @@ class Account:
                 raise ValueError('Entry exceeds $200 or 2% of capital, including fee')
             if len(state['positions']) >= 3 or state['open_cost_cents'] + cost > capital // 10:
                 raise ValueError('Portfolio exposure limit reached')
-            today = (now or datetime.now(timezone.utc)).date().isoformat()
+            today = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).date().isoformat()
             daily = self.db.execute("SELECT COALESCE(SUM(pnl_cents),0) FROM events WHERE kind='sell' AND substr(recorded_at,1,10)=?", (today,)).fetchone()[0]
             if daily <= -state['initial_cash_cents'] * 2 // 100:
                 raise ValueError('Daily realized loss limit reached')
@@ -120,6 +120,8 @@ class Account:
                 raise ValueError('Quote changed; review the exit again')
             if mark and observed < timestamp(mark['as_of']):
                 raise ValueError('Exit quote is older than the saved quote')
+            if mark and observed == timestamp(mark['as_of']) and price != mark['bid_cents']:
+                raise ValueError('Changed exit price requires a new quote timestamp')
             if observed < timestamp(position['opened_as_of']):
                 raise ValueError('Exit quote predates entry')
             if observed.date().isoformat() >= position['expiry']:

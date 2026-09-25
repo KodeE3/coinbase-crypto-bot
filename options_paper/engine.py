@@ -53,6 +53,8 @@ def propose(snapshot, now=None, demo=False):
         symbol = snapshot['symbol']
         if not isinstance(symbol, str) or not symbol.strip():
             raise ValueError('Underlying symbol is required')
+        if not isinstance(snapshot['closes'], list):
+            raise ValueError('Completed daily closes must be a list')
         closes = [money(x) for x in snapshot['closes']]
         if len(closes) < 11 or any(x <= 0 for x in closes):
             raise ValueError('Need at least 11 positive completed daily closes')
