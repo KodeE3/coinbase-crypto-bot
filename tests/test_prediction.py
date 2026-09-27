@@ -211,6 +211,24 @@ class FakeOpener:
 
 
 class ProviderTests(unittest.TestCase):
+    def test_candles_request_current_completed_window(self):
+        from urllib.parse import urlparse, parse_qs
+        from prediction_paper.model import timestamp
+        op = FakeOpener([[]])
+        with patch("prediction_paper.providers.time.time", return_value=1800000037):
+            PublicData(op).candles()
+        query = parse_qs(urlparse(op.requests[0][0].full_url).query)
+        self.assertEqual(query["granularity"], ["60"])
+        self.assertEqual(timestamp(query["end"][0]), 1800000000)
+        self.assertEqual(timestamp(query["start"][0]), 1800000000 - 240 * 60)
+
+    def test_old_cache_is_still_rejected(self):
+        response = Response(b"[]")
+        response.headers = {"Age": "141"}
+        with patch.object(FakeOpener, "open", return_value=response):
+            with self.assertRaisesRegex(DataError, "stale"):
+                PublicData(FakeOpener([])).candles()
+
     def test_pagination_get_only_no_credentials(self):
         op = FakeOpener([{"markets": [{"ticker": "A"}], "cursor": "next"},
                          {"markets": [{"ticker": "B"}], "cursor": ""}])

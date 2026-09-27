@@ -5,6 +5,7 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+from .model import iso
 
 KALSHI = "https://external-api.kalshi.com/trade-api/v2"
 COINBASE = "https://api.exchange.coinbase.com"
@@ -78,7 +79,11 @@ class PublicData:
         return result["market"]
 
     def candles(self):
-        rows = self._get(COINBASE, "/products/BTC-USD/candles", {"granularity": 60})
+        # Explicit completed-minute windows avoid the stale default CDN snapshot.
+        # Keep the cache-age guard: never relabel cached candles as fresh.
+        end = int(time.time() // 60) * 60
+        rows = self._get(COINBASE, "/products/BTC-USD/candles", {
+            "granularity": 60, "start": iso(end - 240 * 60), "end": iso(end)})
         if not isinstance(rows, list) or len(rows) > 300:
             raise DataError("invalid candle response")
         return rows
