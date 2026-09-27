@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Prediction research local state
+/data/
+STOP_PREDICTION_BOT
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
