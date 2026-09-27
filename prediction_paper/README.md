@@ -176,7 +176,27 @@ Authoritative interface references consulted during implementation:
 - [Kalshi fees](https://kalshi.com/docs/kalshi-fee-schedule.pdf)
 - [Coinbase candles](https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/products/get-product-candles)
 
-Build validation: 25 automated tests and the offline demo pass locally. Live
-connectivity is unverified: the build workspace returned HTTP 403 for Kalshi and
-a non-JSON response for Coinbase. Run `scan` in your Codespace to check its network
-access. Do not mistake a passing mocked adapter test for a verified live feed.
+Build validation (2026-09-27): all 27 automated tests pass locally and in the
+user's Codespace. The public feeds are now verified there: one collection cycle
+saved 318 Kalshi snapshots with 240 completed Coinbase candles per snapshot
+(5,626,757 bytes). The strategy's candle validation passed. No orders were placed.
+
+Coinbase's unbounded default request returned a cached response with Age 141 and
+350 candles. The adapter now requests an explicit rolling four-hour window ending
+at the last completed minute; the verified response returned 240 candles with no
+Age header. Cache-age and strategy freshness checks remain enabled.
+
+The verified Codespace checkout is `/workspaces/prediction-data-check`, separate
+from the existing options checkout with uncommitted work. To collect another cycle:
+
+```bash
+cd /workspaces/prediction-data-check
+python -m prediction_paper.cli run --cycles 1
+```
+
+Observations remain in `data/events.jsonl` and the paper account in
+`data/paper.sqlite` inside that checkout, excluded from git. Only one cycle was
+run; no continuous collector or scheduled service was started. At the observed
+market count, each cycle writes approximately 5.6 MB, so monitor disk usage before
+long unattended runs. The original chat runtime still cannot fetch the feeds;
+the verification above was performed in the authenticated Codespace.
