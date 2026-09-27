@@ -1,0 +1,14 @@
+{
+  "initial_cents": 10000,
+  "quantity": 1,
+  "max_trade_cents": 200,
+  "max_exposure_cents": 1000,
+  "max_event_cents": 200,
+  "daily_loss_cents": 500,
+  "min_edge": 0.05,
+  "uncertainty_buffer": 0.05,
+  "slippage": 0.01,
+  "max_spread": 0.08,
+  "series": "KXBTCD",
+  "approved_markets": {}
+}
