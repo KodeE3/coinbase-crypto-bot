@@ -129,14 +129,14 @@ A quote or position that changes while approval is pending must be reviewed agai
 
 ## Connect Alpaca market data (optional)
 
-The adapter makes GET requests only to `https://data.alpaca.markets`. It never submits an order or reads a brokerage account balance. It uses the standard library; no package installation is required. Requests have a 10-second timeout, bounded response size, and no credential-forwarding redirects. Errors do not print API keys or provider response bodies.
+The adapter makes GET requests only to allowlisted market-data paths on `https://data.alpaca.markets` and the contract-catalog path `/v2/options/contracts` on `https://paper-api.alpaca.markets`. It never submits an order or reads a brokerage account balance. It uses the standard library; systems must have IANA timezone data. Requests have a 10-second timeout, bounded response size, and no credential-forwarding redirects. Errors do not print API keys or provider response bodies.
 
 Set these two environment variables through your GitHub Codespaces secrets, with repository access enabled, then restart your Codespace:
 
 - `APCA_API_KEY_ID`
 - `APCA_API_SECRET_KEY`
 
-Use credentials from your Alpaca account. Do not put keys in source code, commit them, or paste them into chat. This module does not automatically load `.env` files. No subscriptions are purchased by the code.
+Use credentials from your Alpaca paper account for discovery. Do not put keys in source code, commit them, or paste them into chat. This module does not automatically load `.env` files. No subscriptions are purchased by the code.
 
 Test the stock-data connection:
 
@@ -157,10 +157,84 @@ python -m options_paper.cli --refresh-quotes --review-exits
 
 Use `--account path/to/account.sqlite3` if you previously selected a custom account. No open positions means no network call. `--demo` is incompatible with provider refresh. The first command saves and values the quotes without trading. The second prompts for each suggested simulated exit, fetches that quote again after confirmation, and refuses the sale if its bid or exit eligibility changed. An unchanged price with a newer timestamp can proceed. Original quote timestamps are retained; stale/future/missing/invalid quotes reject the entire update rather than generating substitute prices. Outside market hours, quotes may fail the 15-minute freshness rule; that is expected.
 
-This is an on-demand refresh, not a background streaming service. The previous file-based buy workflow remains: automatic contract discovery, open-interest/volume enrichment, and automatic entry snapshot assembly are not implemented. Historical stock bars alone cannot validate an options strategy. No claim of successful live authentication is made until the diagnostic runs with your own configured credentials.
+This is an on-demand refresh, not a background streaming service. Automatic discovery and entry snapshot assembly are available through the separate command below. Historical stock bars alone cannot validate an options strategy. Authenticated provider access remains unverified in the implementation environment.
 
 Provider references:
 
 - https://docs.alpaca.markets/us/reference/optionlatestquotes
 - https://docs.alpaca.markets/us/reference/stockbars
 - https://docs.github.com/en/codespaces/managing-your-codespaces/managing-your-account-specific-secrets-for-github-codespaces
+
+## Automatic discovery and entry snapshots
+
+```bash
+python -m options_paper.discovery --symbol SPY --output paper_data/entries/spy-001.json
+```
+
+Requires Python 3.10+, IANA timezone data (`America/New_York`), Alpaca **paper** API
+credentials, and access to OPRA option snapshots. Linux/Codespaces normally includes timezone
+data; Windows Python may require the `tzdata` package. The command runs once, prints a JSON
+summary and stops. It has no account argument, trade prompt, order endpoint or background loop.
+
+| Data | Source and timing |
+|---|---|
+| Underlying trend | Up to 30 completed split-adjusted daily stock bars; minimum 11. `iex` by default; `--stock-feed sip` if entitled. |
+| Identity and open interest | Paper contract catalog, with reporting date preserved. OI must be dated between the latest completed stock session and the current New York date. |
+| Bid, ask and delta | OPRA snapshots. Quotes must be no more than 15 minutes old and not future-dated. No indicative fallback. |
+| Volume | Option daily bar for the latest completed underlying session, **not current intraday volume**. Missing data excludes the contract. |
+
+Discovery covers active, tradable standard calls expiring in 21–45 calendar days, with
+strikes between 80% and 120% of the latest completed stock close. This is a bounded research
+universe, not the entire option chain. OCC symbol, root, underlying, expiry, strike and
+100-share size must agree; adjusted roots and other sizes are excluded. The metadata
+checks do not model arbitrary corporate-action deliverables.
+
+All discovery pages must finish: ten pages per collection, at most 1,000 discovered contracts,
+and enrichment in sorted batches of at most 100. Invalid/looping pagination, duplicate
+identities, duplicate daily bars, provider errors or exhausted limits abort without saving
+a new snapshot. Malformed/ineligible metadata and missing/stale quote, delta or volume
+data exclude the contract and increment a diagnostic count. A complete scan with no usable
+contracts is saved as a rejected research observation; it is not a trading signal.
+
+Output includes underlying bars, feeds, filters, collection times, original quote times,
+volume and OI dates, exclusion counts, and the existing strategy's proposal preview.
+The snapshot `as_of` is the **oldest included quote**, not its download time. Quotes are
+checked again after collection; data that aged out is excluded. Provider greeks have no
+independent timestamp, so `greeks_timestamp` is explicitly null. A fresh quote does not
+establish that delta was recomputed at that instant.
+
+Snapshots are written completely before becoming visible, using a same-filesystem hard link.
+Use a filesystem supporting hard links (such as NTFS or ext4). Existing output files are
+never overwritten. Fix reported dependency/output issues and rerun with a new filename.
+Outside trading hours, stale quotes commonly yield no candidate.
+
+To review a saved observation for a **local simulated buy**, run promptly:
+
+```bash
+python -m options_paper.cli --snapshot paper_data/entries/spy-001.json
+```
+
+The CLI recomputes the proposal, asks for the full contract symbol, then rechecks freshness
+and account risk limits. It does not trust `proposal_preview` as authorization or refresh
+prices during entry confirmation. Regenerate stale snapshots. Original delta, spread,
+volume (100), OI (500), fee, $200/2% entry, exposure, duplicate-position and daily realized-loss
+rules remain unchanged. A preview can pass strategy filters but fail account limits;
+many SPY contracts may exceed the small example budget. Do not loosen limits to force entry.
+
+Run `python -m unittest discover -s tests -v` and `python -m options_paper.demo`.
+Tests exercise mocked collection through saved JSON and a reviewed paper purchase,
+pagination/batching, stale/malformed data, quote aging, redacted errors, atomic output,
+overwrite refusal and unchanged account risk limits.
+
+Next: verify paper-catalog/OPRA connectivity with configured secrets, collect dated forward
+observations with frozen rules (including rejections), then evaluate options results with
+costs and an untouched chronological holdout. Expiry settlement, historical options replay,
+executable fill modeling and background monitoring remain unimplemented. Neither a generated
+candidate nor the fictional demo establishes profitable income.
+
+Provider schema references checked 2026-09-29:
+
+- https://docs.alpaca.markets/us/reference/get-options-contracts
+- https://docs.alpaca.markets/us/reference/optionsnapshots
+- https://docs.alpaca.markets/us/reference/optionbars
+- https://github.com/alpacahq/alpaca-py/blob/master/tests/trading/trading_client/test_option_routes.py

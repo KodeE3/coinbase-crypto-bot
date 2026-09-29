@@ -1,5 +1,9 @@
 # Trading Finisher progress
 
+**Current status (2026-09-29):** see [discovery milestone and next steps](discovery-progress.md).
+The September 25 notes below are historical. Their publication blocker was resolved by
+commit `3bc6b7a`; automatic discovery and entry snapshots are now implemented in this branch.
+
 Updated: 2026-09-25. Project: options paper-account experiment in KodeE3/coinbase-crypto-bot.
 Working branch: `codex/options-paper-foundation`; draft pull request: #2.
 

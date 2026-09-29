@@ -1,4 +1,4 @@
-"""Read-only Alpaca market data. Fixed host, GET only, no broker/order endpoints."""
+"""Read-only Alpaca data. Fixed allowlisted endpoints; no orders or account access."""
 import argparse
 import json
 import os
@@ -12,6 +12,9 @@ from zoneinfo import ZoneInfo
 from .engine import cents, fresh, money, timestamp
 
 BASE = 'https://data.alpaca.markets'
+CONTRACTS_BASE = 'https://paper-api.alpaca.markets'
+DATA_PATHS = {'/v2/stocks/bars', '/v1beta1/options/quotes/latest',
+              '/v1beta1/options/snapshots', '/v1beta1/options/bars'}
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -29,7 +32,13 @@ class AlpacaData:
         self.clock = clock or (lambda: datetime.now(timezone.utc))
 
     def _get(self, path, params):
-        request = Request(BASE + path + '?' + urlencode(params), method='GET', headers={
+        if path == '/v2/options/contracts':
+            base = CONTRACTS_BASE
+        elif path in DATA_PATHS:
+            base = BASE
+        else:
+            raise ValueError('Only allowlisted read-only data endpoints are supported')
+        request = Request(base + path + '?' + urlencode(params), method='GET', headers={
             'APCA-API-KEY-ID': self.key, 'APCA-API-SECRET-KEY': self.secret,
             'Accept': 'application/json'})
         try:

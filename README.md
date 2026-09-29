@@ -13,6 +13,17 @@ Read [the complete options tutorial](options_paper/README.md) for buying, closin
 For an unattended fictional trade cycle, run `python -m options_paper.demo`. It uses a disposable
 account, prints a JSON report, and stops. It requires no input, credentials or network access.
 
+## Automatic option discovery (paper research only)
+
+With Alpaca paper credentials and OPRA data access configured in the environment:
+
+```bash
+python -m options_paper.discovery --symbol SPY --output paper_data/entries/spy-001.json
+```
+
+This saves a dated entry snapshot and proposal preview without creating an account or
+recording a trade. See [setup, safeguards and limitations](options_paper/README.md#automatic-discovery-and-entry-snapshots).
+
 ## Autonomous coding agent
 
 The repository includes [Trading Finisher](.github/agents/trading-finisher.agent.md), a VS Code
