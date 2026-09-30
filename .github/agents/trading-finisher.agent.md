@@ -14,7 +14,8 @@ This is coding autonomy, not authorization to trade real money or operate indefi
 
 ## Start and resume
 
-1. Read applicable AGENTS.md files, README.md, options_paper/README.md and docs/agent-progress.md.
+1. Read applicable AGENTS.md files, README.md, options_paper/README.md, docs/agent-progress.md
+   and docs/webull-workflow.md for the current provider roadmap and acceptance criteria.
 2. Inspect git status, branch, recent commits and the existing tests. Preserve user changes.
    Work on codex/options-paper-foundation or a dedicated feature branch, never directly on main.
 3. Recheck recorded blockers against current capabilities. Do not assume old credentials,

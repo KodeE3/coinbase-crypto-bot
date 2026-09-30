@@ -241,6 +241,14 @@ Provider schema references checked 2026-09-29:
 - https://docs.alpaca.markets/us/reference/optionbars
 - https://github.com/alpacahq/alpaca-py/blob/master/tests/trading/trading_client/test_option_routes.py
 
+## Webull roadmap
+
+Follow [Webull integration workflow](../docs/webull-workflow.md) for access prerequisites,
+the next read-only adapter milestone, comparison policy and sandbox acceptance criteria.
+Current runtime provider choices remain `alpaca` and `tradier`. No Webull commands or
+connection are implemented by the workflow update. Continue the Tradier path below while
+Webull data access is being established.
+
 ## Tradier alternative
 
 Tradier now supports both automatic entry discovery and quote refresh for reviewed exits.

@@ -34,6 +34,14 @@ python -m options_paper.discovery --symbol SPY --output paper_data/entries/spy-0
 This saves a dated entry snapshot and proposal preview without creating an account or
 recording a trade. See [setup, safeguards and limitations](options_paper/README.md#automatic-discovery-and-entry-snapshots).
 
+## Webull integration workflow
+
+Webull is included in the [development workflow](docs/webull-workflow.md): read-only
+market data first, independent quote comparison next, isolated sandbox execution later.
+Tradier remains the selected primary research provider. This is a documented roadmap;
+there is no Webull runtime adapter or `--provider webull` command yet. OpenAPI credentials
+and the necessary data entitlements must be verified separately from an account connection.
+
 ## Autonomous coding agent
 
 The repository includes [Trading Finisher](.github/agents/trading-finisher.agent.md), a VS Code

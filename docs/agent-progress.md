@@ -1,6 +1,13 @@
 # Trading Finisher progress
 
-**Current checkpoint (2026-09-30):** see [Tradier implementation and resume steps](tradier-checkpoint.md).
+**Current workflow (2026-09-30):** Webull is now included in the
+[integration workflow](webull-workflow.md), with a read-only adapter as its next coding
+milestone and explicit gates before independent quote comparison and sandbox execution.
+This update changes workflow documentation only; no Webull adapter is implemented or
+authenticated connection verified. Tradier remains the selected primary data provider.
+The existing runtime passes all 69 tests and the offline demo on Linux/Python 3.12.14.
+
+**Runtime checkpoint:** see [Tradier implementation and resume steps](tradier-checkpoint.md).
 The previous [Alpaca discovery milestone](discovery-progress.md) remains available.
 The September 25 notes below are historical. Their publication blocker was resolved by
 commit `3bc6b7a`; automatic discovery and entry snapshots are now implemented in this branch.
@@ -63,6 +70,11 @@ Implemented this milestone:
    paper-order integration and persistent background monitoring. These are distinct future
    milestones, not requirements to claim the offline demo complete. Select one only when
    the task specifies that scope; never infer authorization for real-money execution.
+
+The dated future-scope list above is historical. For current priorities, follow the Webull
+workflow and Tradier checkpoint linked at the top. Implement the bounded Webull read-only
+milestone with fixtures before declaring credentials an implementation blocker. No sandbox
+or real-money execution is authorized by this workflow update.
 
 If resuming with no new task and these are still the only blockers, recheck the documented
 completion gates and report the bounded milestone complete. Do not request ordinary design
