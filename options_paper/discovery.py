@@ -205,13 +205,20 @@ def save_snapshot(path, snapshot):
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Discover options and save an entry snapshot; no trades')
     parser.add_argument('--symbol', default='SPY')
-    parser.add_argument('--stock-feed', choices=['iex', 'sip'], default='iex')
+    parser.add_argument('--provider', choices=['alpaca', 'tradier'], default='alpaca')
+    parser.add_argument('--stock-feed', choices=['iex', 'sip'], help='Alpaca only; defaults to iex')
     parser.add_argument('--output', required=True, type=Path, help='new JSON path; existing files are never overwritten')
     args = parser.parse_args(argv)
+    if args.provider == 'tradier' and args.stock_feed is not None:
+        parser.error('--stock-feed only applies to Alpaca')
     try:
         if args.output.exists():
             raise ValueError('Output already exists; choose a new snapshot filename')
-        snapshot = discover(AlpacaData(), args.symbol, args.stock_feed)
+        if args.provider == 'tradier':
+            from .tradier import TradierData
+            snapshot = TradierData().entry_snapshot(args.symbol)
+        else:
+            snapshot = discover(AlpacaData(), args.symbol, args.stock_feed or 'iex')
         save_snapshot(args.output, snapshot)
         print(json.dumps({'saved': str(args.output), 'diagnostics': snapshot['diagnostics'],
                           'proposal_preview': snapshot['proposal_preview'], 'trades_recorded': 0}, indent=2))

@@ -1,6 +1,7 @@
 # Trading Finisher progress
 
-**Current status (2026-09-29):** see [discovery milestone and next steps](discovery-progress.md).
+**Current checkpoint (2026-09-30):** see [Tradier implementation and resume steps](tradier-checkpoint.md).
+The previous [Alpaca discovery milestone](discovery-progress.md) remains available.
 The September 25 notes below are historical. Their publication blocker was resolved by
 commit `3bc6b7a`; automatic discovery and entry snapshots are now implemented in this branch.
 

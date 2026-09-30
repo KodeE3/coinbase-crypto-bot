@@ -1,5 +1,7 @@
 # Options paper account
 
+For the selected alternative to Alpaca, start with [Tradier setup](#tradier-alternative).
+
 An educational simulator for one-contract long calls. No broker order connection or real orders. An optional read-only Alpaca adapter fetches market data. The signal is an unvalidated 5-day/10-day moving-average example. All demo prices are fictional.
 
 ## Unattended offline demo
@@ -238,3 +240,91 @@ Provider schema references checked 2026-09-29:
 - https://docs.alpaca.markets/us/reference/optionsnapshots
 - https://docs.alpaca.markets/us/reference/optionbars
 - https://github.com/alpacahq/alpaca-py/blob/master/tests/trading/trading_client/test_option_routes.py
+
+## Tradier alternative
+
+Tradier now supports both automatic entry discovery and quote refresh for reviewed exits.
+The adapter permits GET requests only to four market-data paths on `api.tradier.com`:
+`history`, `options/expirations`, `options/chains`, and `quotes`. It has no broker account,
+order, exercise, cancellation or live-execution interface. Production **data** does not
+change the local simulator into production trading.
+
+### Configure access
+
+1. Obtain a production API token through your own Tradier account's API settings.
+   Sandbox tokens are unsuitable for this strategy: Tradier documents delayed sandbox
+   quotes and no sandbox Greeks. No account is opened or subscription purchased by the bot.
+2. Store it as `TRADIER_ACCESS_TOKEN` in the runtime's environment secrets. In Codespaces,
+   add a Codespaces secret with access to this repository, then restart the Codespace.
+   A GitHub Actions secret does not automatically become a Codespaces environment variable.
+   Never put the token in chat, source files, command arguments, or committed configuration.
+   This project does not load `.env` files automatically.
+3. Check out the updated `codex/options-paper-foundation` branch. Python 3.10+ and IANA
+   timezone data are required, as for the existing adapter.
+4. Run during regular market hours with a new output filename:
+
+```bash
+python -m options_paper.discovery --provider tradier --symbol SPY --output paper_data/entries/spy-tradier-001.json
+```
+
+Discovery saves an observation and proposal preview, never an account or trade. Missing
+credentials, authentication/access errors, malformed collections, duplicates, unexpected
+pagination, or exhausted limits stop collection. There is no automatic provider or sandbox
+fallback. HTTP failures are redacted; redirects are blocked and response sizes are bounded.
+`--stock-feed` applies only to Alpaca and is rejected with Tradier.
+
+Then optionally review the saved snapshot for a local simulated buy:
+
+```bash
+python -m options_paper.cli --snapshot paper_data/entries/spy-tradier-001.json --account paper_data/tradier.sqlite3
+python -m options_paper.cli --provider tradier --refresh-quotes --account paper_data/tradier.sqlite3
+python -m options_paper.cli --provider tradier --refresh-quotes --review-exits --account paper_data/tradier.sqlite3
+```
+
+The full-symbol entry/exit confirmations and all paper-account risk limits still apply.
+Exit review fetches the selected quote again after confirmation; a changed bid or lost exit
+condition requires another review. Specify `--provider tradier` on each refresh command;
+the compatibility default remains Alpaca. Keep provider experiments in separate paper accounts.
+
+### Data policy and research limits
+
+- Discovery examines all returned expirations 21–45 days away, standard 100-share calls,
+  and strikes within 80–120% of the latest completed underlying close. Bounds are 20
+  expirations, 10,000 total chain rows (including puts/out-of-universe rows), 1,000 candidate
+  calls, and 2 MB per response. Exceeding a bound fails the scan instead of ranking a subset.
+- Underlying history uses completed daily dates and up to 30 closes, with an 11-bar minimum
+  and latest session no more than seven days old. Tradier's reported historical adjustments
+  are not guaranteed to match Alpaca's split-adjusted history; corporate actions need review.
+- Both bid and ask timestamps must be at most 15 minutes old and not future-dated. Their
+  older timestamp is retained, and freshness is checked after chain collection. Timestamp
+  seconds and milliseconds are normalized explicitly. Old observations cannot be refreshed
+  by changing their download timestamp.
+- `volume` is **current-day provider volume**, unlike Alpaca's completed-session volume.
+  OI is supplied as a number without a reporting date; `open_interest_date` stays null.
+  No reporting date is inferred from the quote or previous close.
+- Tradier documents **hourly** ORATS Greeks. `updated_at` is preserved. Explicitly zoned
+  timestamps must not be future-dated or more than 90 minutes old. Official examples also
+  contain timezone-free timestamps: those must match the current New York calendar date,
+  but their intraday age cannot be verified and no timezone is invented. These observations
+  are labeled `provider_timezone_unspecified`; a fresh quote does not prove a fresh delta.
+- Missing or invalid Greeks, prices, dates or liquidity values exclude the candidate and
+  increment diagnostics. Unknown OI date and Greek timezone are explicit provider limitations,
+  not proof of freshness. The unchanged illustrative strategy may still produce a paper
+  proposal from such data. Do not interpret it as a validated execution recommendation.
+- Results carry `policy_id: tradier-intraday-v1`. Do not pool them with Alpaca observations
+  as though feed, liquidity timing and adjustment policies were identical.
+
+Current checkpoint: all 69 tests pass locally, including 18 Tradier tests. Authenticated
+Tradier connectivity is **not yet verified** because the token is absent in this runtime.
+Next: configure the secret, collect one market-hours observation, inspect timestamps and
+exclusion counts, then gather forward paper research under frozen rules. No live orders or
+profitability claims are part of this checkpoint.
+
+References checked 2026-09-29:
+
+- [Tradier market-data coverage and Greek cadence](https://docs.tradier.com/docs/market-data)
+- [Token settings](https://web.tradier.com/user/api)
+- [Option chains](https://docs.tradier.com/reference/brokerage-api-markets-get-options-chains)
+- [Option expirations](https://docs.tradier.com/reference/brokerage-api-markets-get-options-expirations)
+- [Quote field definitions and timestamp examples](https://docs.tradier.com/docs/quotes)
+- [Historical-data limitations](https://docs.tradier.com/docs/historical-data)

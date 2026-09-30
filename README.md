@@ -15,7 +15,17 @@ account, prints a JSON report, and stops. It requires no input, credentials or n
 
 ## Automatic option discovery (paper research only)
 
-With Alpaca paper credentials and OPRA data access configured in the environment:
+For the selected Tradier alternative, configure `TRADIER_ACCESS_TOKEN` as an environment
+secret using a production market-data token, then run:
+
+```bash
+python -m options_paper.discovery --provider tradier --symbol SPY --output paper_data/entries/spy-tradier-001.json
+```
+
+The adapter can read market data only; all account activity remains local paper simulation.
+See [Tradier setup and limitations](options_paper/README.md#tradier-alternative).
+
+The existing Alpaca path remains available with Alpaca paper credentials and OPRA data access:
 
 ```bash
 python -m options_paper.discovery --symbol SPY --output paper_data/entries/spy-001.json

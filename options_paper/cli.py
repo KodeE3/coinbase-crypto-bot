@@ -8,6 +8,7 @@ from .account import Account, FEE
 from .engine import propose, timestamp
 from .quotes import save_quotes, valuation, approve_exit
 from .market_data import AlpacaData
+from .tradier import TradierData
 
 
 def display(state):
@@ -49,11 +50,14 @@ def main(argv=None):
     actions.add_argument('--history', action='store_true')
     actions.add_argument('--close', metavar='CONTRACT')
     actions.add_argument('--quotes', type=Path, help='save a batch of updated option quotes and evaluate exits')
-    actions.add_argument('--refresh-quotes', action='store_true', help='fetch Alpaca OPRA quotes for open simulated positions')
+    actions.add_argument('--refresh-quotes', action='store_true', help='fetch provider quotes for open simulated positions')
+    parser.add_argument('--provider', choices=['alpaca', 'tradier'], help='with --refresh-quotes; defaults to alpaca')
     parser.add_argument('--review-exits', action='store_true', help='with --quotes, prompt for each suggested simulated exit')
     parser.add_argument('--bid', help='illustrative exit bid, dollars per option share')
     parser.add_argument('--as-of', help='exit quote timestamp including timezone')
     args = parser.parse_args(argv)
+    if args.provider and not args.refresh_quotes:
+        parser.error('--provider requires --refresh-quotes')
     if args.review_exits and not (args.quotes or args.refresh_quotes):
         parser.error('--review-exits requires --quotes or --refresh-quotes')
     if args.demo and args.refresh_quotes:
@@ -82,9 +86,10 @@ def main(argv=None):
                 if not contracts:
                     print('No open simulated positions to refresh.')
                     return 0
-                client = AlpacaData()
+                client = TradierData() if args.provider == 'tradier' else AlpacaData()
                 snapshot = client.option_quotes(contracts)
-                print('Source: Alpaca OPRA. Refresh runs once per command; trades remain simulated.')
+                label = 'Tradier production market data' if args.provider == 'tradier' else 'Alpaca OPRA'
+                print(f'Source: {label}. Trades remain simulated.')
             else:
                 snapshot = json.loads(args.quotes.read_text(encoding='utf-8'))
             report = save_quotes(account, snapshot)
