@@ -1,0 +1,10 @@
+{
+  "as_of": "2026-09-22T20:00:00Z",
+  "symbol": "SPY",
+  "paper_equity": 10000,
+  "closes": [100, 101, 100, 102, 103, 104, 103, 105, 106, 107, 108],
+  "options": [
+    {"symbol": "DEMO-SPY-20261023-C-110", "underlying": "SPY", "right": "call", "expiry": "2026-10-23", "strike": 110, "bid": 1.40, "ask": 1.50, "delta": 0.48, "volume": 350, "open_interest": 1200, "multiplier": 100},
+    {"symbol": "DEMO-SPY-20261023-C-115", "underlying": "SPY", "right": "call", "expiry": "2026-10-23", "strike": 115, "bid": 0.05, "ask": 0.50, "delta": 0.20, "volume": 12, "open_interest": 50, "multiplier": 100}
+  ]
+}
