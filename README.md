@@ -36,11 +36,17 @@ recording a trade. See [setup, safeguards and limitations](options_paper/README.
 
 ## Webull integration workflow
 
-Webull is included in the [development workflow](docs/webull-workflow.md): read-only
-market data first, independent quote comparison next, isolated sandbox execution later.
-Tradier remains the selected primary research provider. This is a documented roadmap;
-there is no Webull runtime adapter or `--provider webull` command yet. OpenAPI credentials
-and the necessary data entitlements must be verified separately from an account connection.
+Webull now supports read-only quote capture and paper-position refresh/reviewed exits.
+See [Webull setup and evidence](docs/webull-checkpoint.md). For existing simulated positions:
+
+```bash
+python -m options_paper.cli --provider webull --refresh-quotes --account paper_data/webull-research.sqlite3
+```
+
+Requires approved OpenAPI credentials and options data access. Authenticated connectivity
+has not yet been verified. Tradier remains the primary entry-discovery provider; Webull
+discovery, independent quote comparison and sandbox execution are later milestones in
+the [development workflow](docs/webull-workflow.md). No real-money orders are implemented.
 
 ## Autonomous coding agent
 

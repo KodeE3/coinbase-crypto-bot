@@ -1,9 +1,10 @@
 # Webull integration workflow
 
 Updated: 2026-09-30. Applies to the options paper-research branch and draft PR #2.
-This adds Webull to the development workflow. A Webull runtime adapter, comparison gate
-and sandbox executor are **planned, not implemented**. Current commands support only
-Alpaca and Tradier; `--provider webull` is not a valid command yet.
+Webull quote capture and paper-position refresh are implemented and tested offline;
+see [setup and current evidence](webull-checkpoint.md). `cli --provider webull
+--refresh-quotes` is supported. Automatic Webull entry discovery, comparison gating
+and sandbox execution remain unimplemented. Authenticated access is not yet verified.
 
 ## Current workflow and priority
 
@@ -14,8 +15,9 @@ independent read-only observation source, then an explicitly selected research p
 1. Continue the [Tradier connectivity checkpoint](tradier-checkpoint.md#resume-from-here)
    when its production data token is available. Save rejected observations as well as
    candidates. Do not delay this work while waiting for Webull approval.
-2. The next Webull coding milestone is the bounded read-only adapter described below.
-   Implement and test offline fixtures while credentials or entitlements are unavailable.
+2. Validate the implemented Webull quote adapter with authorized production-data access.
+   The next coding extension is completed underlying history and automatic entry discovery;
+   verify the US history schema and date-filter semantics before implementation.
 3. Verify authenticated Webull data separately, then add optional comparison reports.
 4. Continue frozen-rule forward observations, options replay/out-of-sample evaluation
    and expiry settlement. These research milestones still matter; adding another broker
@@ -35,14 +37,20 @@ availability, historical depth and sandbox parity must be verified against the s
 endpoints and the account's entitlements; do not assume stock access includes them.
 
 Use runtime environment secrets named `WEBULL_APP_KEY` and `WEBULL_APP_SECRET` for the
-future adapter. These are project conventions, not variables automatically consumed by
+adapter, plus `WEBULL_ACCESS_TOKEN` if 2FA requires it. These are project conventions, not variables automatically consumed by
 the official SDK. Check presence only; never print values or store them in snapshots,
 logs, source, CLI arguments or chat. Do not purchase subscriptions as part of this work.
 Configure production-data and sandbox environments explicitly using the official host
 matrix; never silently switch environments after a failure. Sandbox observations must
 stay labeled test data and cannot be used as live-price confirmation.
 
-## Milestone 1: read-only data adapter
+## Milestone 1: read-only data adapter (quote portion complete)
+
+Implemented: signed GET requests to option snapshots and static option contracts,
+strict standard-deliverable validation, quote capture, and paper quote refresh/exits.
+Not implemented: underlying bars and automatic entry discovery. The US history reference
+was not sufficiently verified in this session; no guessed schema or date semantics shipped.
+Snapshot Greeks and OI exist, but do not have independent update/reporting timestamps.
 
 Before coding network calls, pin the official SDK version or documented endpoint schemas
 and record which fields and timestamp units are actually supplied. Use only the minimum
@@ -103,10 +111,10 @@ explicitly authorized milestone; it is outside this workflow update.
 
 ## Evidence and resume
 
-The workflow update changes documentation and coding-agent priorities only. Runtime
-provider support, signal behavior and order capabilities are unchanged. No Webull connection
-was tested. Resume with Milestone 1; complete offline implementation before reporting any
-credential or entitlement blocker. Retain the Tradier research path throughout.
+The quote milestone adds `options_paper.webull` and a Webull paper-refresh provider. All
+88 tests and the offline demo pass locally. No Webull connection was tested because the
+runtime has no credentials. Follow [the current checkpoint](webull-checkpoint.md) for
+commands, limitations and the remaining path to paper and eventual live validation.
 
 Official references checked 2026-09-30:
 

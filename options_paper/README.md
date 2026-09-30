@@ -241,13 +241,22 @@ Provider schema references checked 2026-09-29:
 - https://docs.alpaca.markets/us/reference/optionbars
 - https://github.com/alpacahq/alpaca-py/blob/master/tests/trading/trading_client/test_option_routes.py
 
-## Webull roadmap
+## Webull quote capture and paper refresh
 
-Follow [Webull integration workflow](../docs/webull-workflow.md) for access prerequisites,
-the next read-only adapter milestone, comparison policy and sandbox acceptance criteria.
-Current runtime provider choices remain `alpaca` and `tradier`. No Webull commands or
-connection are implemented by the workflow update. Continue the Tradier path below while
-Webull data access is being established.
+Follow [Webull setup and checkpoint](../docs/webull-checkpoint.md) for credentials,
+immutable quote capture and validation evidence. `--provider webull --refresh-quotes`
+now supports existing paper positions and `--review-exits`, including a fresh fetch after
+confirmation. It permits only signed production-data GETs to option snapshots and static
+contract metadata. There is no Webull account/order interface or sandbox fallback.
+
+Collection validates complete standard 100-share contract identities and rejects quotes
+older than 60 seconds, future timestamps and sub-cent prices. Captures retain original
+snapshot timestamps and provenance; separate bid/ask times and actual feed entitlement
+are not supplied by this endpoint. See the checkpoint for limitations of saved marks.
+
+Discovery still supports only `alpaca` and `tradier`. Webull automatic entries need a
+verified underlying-history implementation. Authenticated Webull access is unverified;
+88 tests and the offline demo pass. See [the remaining workflow](../docs/webull-workflow.md).
 
 ## Tradier alternative
 
