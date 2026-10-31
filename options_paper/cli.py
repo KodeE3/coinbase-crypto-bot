@@ -14,6 +14,7 @@ from .webull import WebullData
 
 def display(state):
     print(f"Mode: {state['mode']}")
+    print(f"Paper risk profile: {state['risk_profile']}")
     print(f"Cash: ${state['cash_cents']/100:,.2f} | Realized P/L: ${state['realized_pnl_cents']/100:,.2f}")
     print(f"Open position cost (not current market value): ${state['open_cost_cents']/100:,.2f}")
     for position in state['positions']:
@@ -45,6 +46,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Paper-only options account; no real orders')
     parser.add_argument('--demo', action='store_true', help='use fictional data and a separate demo account')
     parser.add_argument('--account', type=Path, help='persistent SQLite account file')
+    parser.add_argument('--profile', choices=['tutorial','small'], help='new account only; small uses $200 fictional cash and $20 full-premium cap')
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument('--snapshot', type=Path)
     actions.add_argument('--status', action='store_true')
@@ -76,7 +78,7 @@ def main(argv=None):
         source = Path(__file__).with_name('sample_snapshot.json')
         sample = json.loads(source.read_text(encoding='utf-8'))
         path = args.account or Path('paper_data/demo.sqlite3' if args.demo else 'paper_data/snapshots.sqlite3')
-        account = Account(path, demo=args.demo)
+        account = Account(path, demo=args.demo, profile=args.profile)
         if args.status:
             display(account.status())
             display_quotes(valuation(account))
@@ -159,3 +161,4 @@ def main(argv=None):
 
 if __name__ == '__main__':
     raise SystemExit(main())
+

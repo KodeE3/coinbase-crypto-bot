@@ -1,3 +1,10 @@
+## October 31 operations update
+
+The [operations runbook](../docs/trading-operations.md) adds automatic quote refresh,
+a persisted `--profile small` for a separate $200 fictional account with a $20 full-premium
+and modeled-fee cap, and expired-position entry blocking. The tutorial defaults and
+explicit simulated-trade confirmation remain. Older test counts below are historical.
+
 # Options paper account
 
 For the selected alternative to Alpaca, start with [Tradier setup](#tradier-alternative).
@@ -345,3 +352,4 @@ References checked 2026-09-29:
 - [Option expirations](https://docs.tradier.com/reference/brokerage-api-markets-get-options-expirations)
 - [Quote field definitions and timestamp examples](https://docs.tradier.com/docs/quotes)
 - [Historical-data limitations](https://docs.tradier.com/docs/historical-data)
+

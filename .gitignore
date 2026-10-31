@@ -224,3 +224,13 @@ paper_data/
 *.sqlite3-wal
 *.sqlite3-shm
 options_paper_journal.jsonl
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+data/
+heartbeat.json
+worker.lock
+STOP
+STOP_PREDICTION_BOT
+

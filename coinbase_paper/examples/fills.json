@@ -1,0 +1,4 @@
+[
+  {"product_id":"BTC-USD","trade_id":"EXAMPLE-001","order_id":"EXAMPLE-ORDER-001","side":"BUY","trade_time":"2026-10-26T12:00:00Z","price":"80000","size":"20","size_in_quote":true,"commission":"0.18","commission_currency":"USD"},
+  {"product_id":"ETH-USD","trade_id":"EXAMPLE-002","order_id":"EXAMPLE-ORDER-002","side":"SELL","trade_time":"2026-10-26T12:10:00Z","price":"2400","size":"0.01","size_in_quote":false,"commission":"0.00001","commission_currency":"ETH"}
+]
