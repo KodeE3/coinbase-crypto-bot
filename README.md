@@ -1,6 +1,6 @@
 # Trading bot experiments
 
-This repository contains the options paper-account experiment on the `codex/options-paper-foundation` branch. The original Coinbase BTC bot project is separate work.
+This development branch combines options and prediction paper research, the Coinbase paper lifecycle, and the FX demo EA. Start with [the operations runbook](docs/trading-operations.md) for what is automated, the new $200/$20 simulation profile, and remaining runtime dependencies. No live Python order interface is implemented.
 
 Start the fictional options demo:
 
@@ -63,3 +63,4 @@ session limits still apply. It is authorized to improve the simulator, not to tr
 Progress and remaining integration blockers are recorded in [the resume log](docs/agent-progress.md).
 
 Agent format reference: https://code.visualstudio.com/docs/agent-customization/custom-agents
+

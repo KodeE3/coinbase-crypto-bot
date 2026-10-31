@@ -6,10 +6,18 @@ from pathlib import Path
 from .engine import cents, fresh, timestamp
 
 FEE = 65  # Illustrative per-contract, per-side commission in cents.
+PROFILES = {
+    'tutorial': {'initial': '10000', 'max_trade': 20000, 'risk_percent': 2,
+                 'max_positions': 3, 'max_exposure_percent': 10, 'daily_loss': 20000},
+    'small': {'initial': '200', 'max_trade': 2000, 'risk_percent': 10,
+              'max_positions': 1, 'max_exposure_percent': 10, 'daily_loss': 2000},
+}
 
 
 class Account:
-    def __init__(self, path, demo=False, starting_cash='10000'):
+    def __init__(self, path, demo=False, starting_cash=None, profile=None):
+        if profile is not None and profile not in PROFILES:
+            raise ValueError('Unknown risk profile')
         self.demo = demo
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -32,12 +40,24 @@ class Account:
         CREATE TABLE IF NOT EXISTS marks (
             position_id TEXT PRIMARY KEY, bid_cents INTEGER NOT NULL,
             ask_cents INTEGER NOT NULL, as_of TEXT NOT NULL, assessed_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS risk_profile (
+            id INTEGER PRIMARY KEY CHECK(id=1), name TEXT NOT NULL);
         ''')
-        initial = cents(starting_cash)
+        existing = self.db.execute('SELECT name FROM risk_profile WHERE id=1').fetchone()
+        legacy = self.db.execute('SELECT 1 FROM account WHERE id=1').fetchone()
+        selected = existing['name'] if existing else 'tutorial' if legacy else profile or 'tutorial'
+        if selected not in PROFILES or (profile is not None and profile != selected):
+            self.db.close()
+            raise ValueError('Persisted risk profile cannot change; use a separate paper account')
+        self.profile = selected
+        initial = cents(starting_cash if starting_cash is not None else PROFILES[selected]['initial'])
         if initial <= 0:
             raise ValueError('Starting cash must be positive')
         with self.transaction():
             self.db.execute('INSERT OR IGNORE INTO account VALUES(1,?,?,?)', (initial, initial, int(demo)))
+            self.db.execute('INSERT OR IGNORE INTO risk_profile VALUES(1,?)', (selected,))
+            if self.db.execute('SELECT name FROM risk_profile WHERE id=1').fetchone()[0] != selected:
+                raise ValueError('Concurrent profile initialization conflict')
         if bool(self.db.execute('SELECT demo FROM account').fetchone()[0]) != demo:
             self.db.close()
             raise ValueError('Demo and snapshot accounts must use different database files')
@@ -56,10 +76,13 @@ class Account:
             raise
 
     def status(self):
+        if not self.db.in_transaction:
+            with self.transaction(): return self.status()
         row = self.db.execute('SELECT * FROM account').fetchone()
         positions = [dict(x) for x in self.db.execute("SELECT * FROM positions WHERE status='open'")]
         pnl = self.db.execute('SELECT COALESCE(SUM(pnl),0) FROM positions').fetchone()[0]
         return {'mode': 'fictional demo' if self.demo else 'snapshot simulation',
+                'risk_profile': self.profile,
                 'cash_cents': row['cash'], 'initial_cash_cents': row['initial'],
                 'realized_pnl_cents': pnl, 'open_cost_cents': sum(x['cost'] for x in positions),
                 'positions': positions}
@@ -87,14 +110,28 @@ class Account:
                 raise ValueError('Insufficient paper cash')
             # Cost-basis capital, NOT a live equity/NAV estimate.
             capital = state['initial_cash_cents'] + state['realized_pnl_cents']
-            if cost > min(20000, capital * 2 // 100):
-                raise ValueError('Entry exceeds $200 or 2% of capital, including fee')
-            if len(state['positions']) >= 3 or state['open_cost_cents'] + cost > capital // 10:
+            limits = PROFILES[self.profile]
+            reserved_exit_fees = FEE if self.profile == 'small' else 0
+            risk_cost = cost + reserved_exit_fees
+            exposure = state['open_cost_cents'] + reserved_exit_fees*len(state['positions'])
+            if risk_cost > min(limits['max_trade'], capital * limits['risk_percent'] // 100):
+                raise ValueError(f"Entry exceeds profile full-premium risk limit (${limits['max_trade']/100:g} or {limits['risk_percent']}% of capital), including fees")
+            if len(state['positions']) >= limits['max_positions'] or exposure + risk_cost > capital * limits['max_exposure_percent'] // 100:
                 raise ValueError('Portfolio exposure limit reached')
             today = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).date().isoformat()
             daily = self.db.execute("SELECT COALESCE(SUM(pnl_cents),0) FROM events WHERE kind='sell' AND substr(recorded_at,1,10)=?", (today,)).fetchone()[0]
             if daily <= -state['initial_cash_cents'] * 2 // 100:
-                raise ValueError('Daily realized loss limit reached')
+                if self.profile == 'tutorial': raise ValueError('Daily realized loss limit reached')
+            if self.profile == 'small':
+                losses = self.db.execute("SELECT COALESCE(SUM(MAX(-pnl_cents,0)),0) FROM events WHERE kind='sell' AND substr(recorded_at,1,10)=?",(today,)).fetchone()[0]
+                if losses + exposure + risk_cost > limits['daily_loss']:
+                    raise ValueError('Daily loss plus full-premium exposure exceeds $20')
+            decision_time = timestamp(proposal['snapshot_as_of']) if self.demo else (now or datetime.now(timezone.utc))
+            if decision_time.tzinfo is None: raise ValueError('Timezone required')
+            if any(p['expiry'] <= decision_time.date().isoformat() for p in state['positions']):
+                raise ValueError('Expired position requires reconciliation before new entries')
+            if proposal['expiry'] <= decision_time.date().isoformat():
+                raise ValueError('Expired or expiry-day entry refused')
             self.db.execute('INSERT INTO positions VALUES(?,?,?,?,?,?,?,NULL)',
                             (proposal['id'], proposal['contract'], proposal['underlying'], proposal['expiry'],
                              proposal['snapshot_as_of'], cost, 'open'))
@@ -143,3 +180,4 @@ class Account:
 
     def history(self):
         return [dict(x) for x in self.db.execute('SELECT * FROM events ORDER BY seq')]
+
