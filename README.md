@@ -2,6 +2,12 @@
 
 This development branch combines options and prediction paper research, the Coinbase paper lifecycle, and the FX demo EA. Start with [the operations runbook](docs/trading-operations.md) for what is automated, the new $200/$20 simulation profile, and remaining runtime dependencies. No live Python order interface is implemented.
 
+The [spot scanner](docs/spot-scanner.md) can now discover BTC/ETH/SOL daily-breakout
+research candidates and save fee-aware paper proposals for explicit approval.
+Run `python -m trading_ops.demo` for the complete offline scanner → approval →
+entry → exit demonstration, or add `--scan-spot` to the worker for public-data
+scans. Scanning is opt-in; the research rule has no demonstrated trading edge.
+
 Start the fictional options demo:
 
 ```bash

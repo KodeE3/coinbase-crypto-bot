@@ -4,7 +4,7 @@ import json
 import time
 from datetime import datetime,timezone
 from pathlib import Path
-from coinbase_paper.gate import PaperGate,parse_time
+from coinbase_paper.gate import PaperGate,GateError,parse_time
 from options_paper.account import Account as OptionsAccount
 from options_paper.quotes import save_quotes
 from options_paper.market_data import AlpacaData
@@ -16,6 +16,7 @@ from prediction_paper.strategy import validate_config
 from prediction_paper.cli import cycle as prediction_cycle
 from .runtime import SingleWorker,atomic_json
 from .spot import SpotData
+from .scanner import scan_cycle
 
 
 def stamp(): return datetime.now(timezone.utc).isoformat()
@@ -25,26 +26,36 @@ def spot_cycle(db,stop,provider):
     gate=PaperGate(db)
     try:
         actions=[]
-        rows=gate.db.execute("SELECT * FROM proposals WHERE status IN ('Open','Approved') ORDER BY created").fetchall()
+        expired=gate.expire_queued()
+        rows=gate.db.execute("SELECT * FROM proposals WHERE status IN ('Open','Approved') ORDER BY CASE status WHEN 'Open' THEN 0 ELSE 1 END,created").fetchall()
         for p in rows:
             if p['status']=='Approved' and Path(stop).exists():
                 actions.append({'id':p['id'],'status':'blocked_by_stop_file'});continue
             if p['status']=='Approved' and parse_time(p['expires'])<=datetime.now(timezone.utc):
                 actions.append({'id':p['id'],'status':'approval_expired'});continue
-            if p['status']=='Open':
-                quote=provider.quote(p['pair'])
-                actions.append(gate.evaluate_exit(p['id'],quote['bid'],quote['at']))
-            else:
-                candle=provider.completed_candle(p['pair'])
-                quote=provider.quote(p['pair'])
-                # Recheck stop AFTER network I/O and before any simulated entry.
-                if Path(stop).exists():
-                    actions.append({'id':p['id'],'status':'blocked_by_stop_file'});continue
-                from decimal import Decimal
-                if Decimal(quote['ask'])>Decimal(p['entry']):
-                    actions.append({'id':p['id'],'status':'entry_trigger_not_met'});continue
-                actions.append(gate.simulate_entry(p['id'],quote['ask'],candle,quote_utc=quote['at']))
-        return {'status':'ok','actions':actions,'account':gate.status()}
+            try:
+                if p['status']=='Open':
+                    quote=provider.quote(p['pair'])
+                    actions.append({'id':p['id'],**gate.evaluate_exit(p['id'],quote['bid'],quote['at'])})
+                else:
+                    if gate.db.execute("SELECT 1 FROM proposals WHERE status='Open'").fetchone():
+                        actions.append({'id':p['id'],'status':'blocked_by_open_position'});continue
+                    candle=provider.completed_candle(p['pair'])
+                    quote=provider.quote(p['pair'])
+                    # Recheck stop AFTER network I/O and before any simulated entry.
+                    if Path(stop).exists():
+                        actions.append({'id':p['id'],'status':'blocked_by_stop_file'});continue
+                    from decimal import Decimal
+                    if Decimal(quote['ask'])>Decimal(p['entry']):
+                        actions.append({'id':p['id'],'status':'entry_trigger_not_met'});continue
+                    actions.append(gate.simulate_entry(p['id'],quote['ask'],candle,quote_utc=quote['at']))
+            except GateError:
+                actions.append({'id':p['id'],'status':'error' if p['status']=='Open' else 'blocked_by_entry_gate',
+                    'error_type':'GateError'})
+            except Exception as exc:
+                actions.append({'id':p['id'],'status':'error','error_type':type(exc).__name__})
+        return {'status':'error' if any(a['status']=='error' for a in actions) else 'ok',
+                'actions':actions,'expired':expired,'account':gate.status()}
     finally: gate.close()
 
 
@@ -61,11 +72,13 @@ def options_cycle(db,provider_name):
     finally: account.close()
 
 
-def run_cycle(state,prediction_config=None,options_db=None,options_provider=None,spot_provider=None,prediction_provider=None):
+def run_cycle(state,prediction_config=None,options_db=None,options_provider=None,spot_provider=None,prediction_provider=None,scan_spot=False):
     state=Path(state);state.mkdir(parents=True,exist_ok=True);stop=state/'STOP'
     report={'mode':'PAPER_RESEARCH_ONLY','started_at':stamp(),'new_entries_stopped':stop.exists(),'components':{}}
     atomic_json(state/'heartbeat.json',{**report,'status':'running'})
     tasks={'coinbase':lambda:spot_cycle(state/'coinbase.sqlite',stop,spot_provider or SpotData())}
+    tasks['spot_scanner']=lambda:scan_cycle(state/'coinbase.sqlite',stop,spot_provider) if scan_spot else {
+        'status':'disabled','reason':'enable with --scan-spot; proposals still require approval'}
     tasks['options']=lambda:options_cycle(options_db or state/'options.sqlite',options_provider)
     def prediction():
         if not prediction_config: return {'status':'disabled','reason':'config not supplied'}
@@ -83,6 +96,7 @@ def run_cycle(state,prediction_config=None,options_db=None,options_provider=None
         except Exception as exc:
             # Avoid copying provider responses/credentials into long-lived status files.
             report['components'][name]={'status':'error','error_type':type(exc).__name__}
+    report['new_entries_stopped']=stop.exists()
     report['finished_at']=stamp()
     report['status']='degraded' if any(v['status']=='error' for v in report['components'].values()) else 'completed'
     report['runtime_scope']='local worker only; FX requires a separately running MT4 demo terminal'
@@ -96,6 +110,7 @@ def main(argv=None):
     p.add_argument('--prediction-config',type=Path)
     p.add_argument('--options-db',type=Path)
     p.add_argument('--options-provider',choices=['alpaca','tradier','webull'])
+    p.add_argument('--scan-spot',action='store_true',help='research BTC/ETH/SOL daily breakouts and queue paper proposals for approval')
     p.add_argument('--cycles',type=int,default=1,help='zero means keep running')
     p.add_argument('--interval',type=int,default=60)
     args=p.parse_args(argv)
@@ -104,7 +119,7 @@ def main(argv=None):
     try:
         with SingleWorker(args.state_dir/'worker.lock'):
             while args.cycles==0 or count<args.cycles:
-                report=run_cycle(args.state_dir,args.prediction_config,args.options_db,args.options_provider)
+                report=run_cycle(args.state_dir,args.prediction_config,args.options_db,args.options_provider,scan_spot=args.scan_spot)
                 print(json.dumps(report,sort_keys=True),flush=True)
                 count+=1
                 failures=failures+1 if report['status']=='degraded' else 0

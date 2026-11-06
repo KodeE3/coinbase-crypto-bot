@@ -8,6 +8,27 @@ from prediction_paper.providers import NoRedirect,DataError
 from coinbase_paper.gate import money,parse_time,fresh_quote
 
 
+def completed_daily_rows(rows,count,now):
+    """Require an unbroken UTC window; never fabricate missing exchange bars."""
+    if type(count) is not int or not 1<=count<=299 or now.tzinfo is None:
+        raise DataError('invalid candle window')
+    end=int(now.astimezone(timezone.utc).replace(hour=0,minute=0,second=0,microsecond=0).timestamp())
+    if not isinstance(rows,list) or not rows or len(rows)>300: raise DataError('invalid candles')
+    by_start={}
+    for row in rows:
+        if not isinstance(row,(list,tuple)) or len(row)!=6: raise DataError('malformed daily candle')
+        start=money(row[0]);low,high,open_,close,volume=map(money,row[1:])
+        if start!=start.to_integral_value() or int(start)%86400 or start in by_start or start>end:
+            raise DataError('duplicate, future or unaligned daily candle')
+        if not 0<low<=min(open_,close)<=max(open_,close)<=high or volume<0:
+            raise DataError('invalid daily OHLCV')
+        by_start[int(start)]=[int(start),*map(str,(low,high,open_,close,volume))]
+    expected=list(range(end-count*86400,end,86400))
+    if any(start not in by_start for start in expected): raise DataError('completed daily candle gap')
+    # The exchange may include a current (incomplete) bucket or earlier buckets.
+    return [by_start[start] for start in expected]
+
+
 class SpotData:
     PAIRS=('BTC-USD','ETH-USD','SOL-USD')
     def __init__(self,opener=None): self.opener=opener or build_opener(NoRedirect())
@@ -61,3 +82,12 @@ class SpotData:
         expected=int(end.timestamp())-86400
         if expected not in times: raise DataError('latest completed daily candle missing')
         return end.isoformat()
+
+    def daily_candles(self,pair,count=21,now=None):
+        now=now or datetime.now(timezone.utc)
+        if type(count) is not int or not 1<=count<=299 or now.tzinfo is None:
+            raise DataError('invalid candle window')
+        end=now.astimezone(timezone.utc).replace(hour=0,minute=0,second=0,microsecond=0)
+        rows=self._get(pair,'candles',{'granularity':86400,
+            'start':(end-timedelta(days=count)).isoformat(),'end':end.isoformat()})
+        return completed_daily_rows(rows,count,now)

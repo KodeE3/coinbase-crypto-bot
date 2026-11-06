@@ -1,4 +1,4 @@
-# Trading operations checkpoint — October 31, 2026
+# Trading operations checkpoint — November 6, 2026
 
 This branch combines the existing options and prediction research packages with
 the Coinbase paper gate and an updated FX demo EA. It has **no Python live-order
@@ -9,7 +9,7 @@ accounts. No brokerage settings, live orders or funds are changed by this work.
 
 | Component | Implemented behavior | Remaining runtime dependency |
 |---|---|---|
-| Coinbase paper | Worker checks explicitly approved proposals, rechecks fresh quotes/risk, simulates entries and stop/target exits, and reconciles cash after costs. | Durable Python host; a proposal must first receive explicit operator approval. No new-signal scanner is included in the worker. |
+| Coinbase paper | Worker checks open-position exits first, then explicitly approved entries, fresh quotes/risk and cash reconciliation. Optional BTC/ETH/SOL daily scanner queues new Pending proposals with evidence. | Durable Python host and explicit operator approval. Scanner is opt-in and its strategy is unvalidated. |
 | Options | Worker refreshes existing simulated positions with Alpaca, Tradier or Webull data and reports exit suggestions. | Configured provider credentials/data entitlement. Simulated buys and sells still require the existing exact-contract confirmation. |
 | Prediction markets | Existing paper runner handles reviewed market rules, pricing, risk and final-result settlement. Supervisor gives it shared stop/status handling. | Reviewed current contract rules in the configuration. Empty approval maps remain blocked. Kalshi data model; not a Robinhood order integration. |
 | FX v2.2 | Nine-pair MT4 demo scanner, persistent intent/signal state, expiring calendar clearance, single-instance lock, stale-feed watchdog and heartbeat. | Compile and forward-test on a running Windows MT4 demo terminal. Not compiled in this environment. |
@@ -32,6 +32,12 @@ or reviewed prediction contracts, it makes no market-data request. The resulting
 disabled/blocked components; `completed` means the check finished, not all strategies
 are enabled. To keep the worker running, add `--cycles 0 --interval 60` on a durable
 machine. No host/service has been provisioned or started by this branch.
+
+Add `--scan-spot` to enable public-data signal discovery; see the
+[scanner rules and approval workflow](spot-scanner.md). With that flag, an otherwise
+empty account can make market-data requests and create Pending paper proposals.
+The scanner never approves proposals. A blocked entry no longer interrupts an
+open-position exit check, and stale unfilled proposals are expired automatically.
 
 Only one worker may use a state directory. The OS lock is released on process exit.
 Three consecutive degraded cycles stop the process with a nonzero exit code.
