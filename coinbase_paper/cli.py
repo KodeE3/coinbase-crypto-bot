@@ -9,6 +9,7 @@ def main(argv=None):
  sub=p.add_subparsers(dest='cmd',required=True)
  a=sub.add_parser('propose');a.add_argument('id');a.add_argument('pair');a.add_argument('entry');a.add_argument('stop');a.add_argument('target');a.add_argument('quantity');a.add_argument('expires')
  a=sub.add_parser('decide');a.add_argument('id');a.add_argument('decision',choices=['approve','reject'])
+ a=sub.add_parser('inspect');a.add_argument('id',help='review proposal and recorded signal evidence without approving')
  a=sub.add_parser('paper-entry');a.add_argument('id');a.add_argument('market_price');a.add_argument('candle_utc');a.add_argument('--quote-at',required=True)
  a=sub.add_parser('paper-exit');a.add_argument('id');a.add_argument('market_price');a.add_argument('--quote-at',required=True)
  a=sub.add_parser('import-fixture');a.add_argument('json_file');a.add_argument('--portfolio',default='default');a.add_argument('--complete',action='store_true')
@@ -23,6 +24,11 @@ def main(argv=None):
   else:
    g=PaperGate(args.db)
    if args.cmd=='propose':result=g.propose(args.id,args.pair,args.entry,args.stop,args.target,args.quantity,args.expires)
+   elif args.cmd=='inspect':
+    row=g.db.execute('SELECT * FROM proposals WHERE id=?',(args.id,)).fetchone()
+    if row is None:raise GateError('Unknown proposal')
+    events=[{**dict(x),'detail':json.loads(x['detail'])} for x in g.db.execute('SELECT * FROM events WHERE proposal_id=? ORDER BY id',(args.id,))]
+    result={'mode':'PAPER_ONLY','proposal':dict(row),'events':events}
    elif args.cmd=='decide':result={'status':g.decide(args.id,args.decision=='approve')}
    elif args.cmd=='paper-entry':result=g.simulate_entry(args.id,args.market_price,args.candle_utc,quote_utc=args.quote_at)
    elif args.cmd=='paper-exit':result=g.evaluate_exit(args.id,args.market_price,args.quote_at)

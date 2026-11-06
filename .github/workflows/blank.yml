@@ -1,9 +1,9 @@
 name: Paper trading regression tests
 on:
   push:
-    branches: [main, codex/options-paper-foundation, codex/trading-automation-hardening]
+    branches: [main, codex/options-paper-foundation, codex/trading-automation-hardening, codex/paper-worker-reliability]
   pull_request:
-    branches: [main, codex/options-paper-foundation]
+    branches: [main, codex/options-paper-foundation, codex/trading-automation-hardening]
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,5 +24,6 @@ jobs:
         working-directory: coinbase_paper
       - run: python -m options_paper.demo
       - run: python -m prediction_paper.cli demo
+      - run: python -m trading_ops.demo
       - run: python -m trading_ops.worker --state-dir "$RUNNER_TEMP/paper-operations" --prediction-config prediction-config.json
 

@@ -103,6 +103,36 @@ class PaperGate:
         self.db.execute('INSERT INTO events(proposal_id,kind,at,detail) VALUES (?,?,?,?)',
                         (pid,kind,at.isoformat(),json.dumps(detail,sort_keys=True)))
 
+    def entry_capacity(self, now=None):
+        """Consistent, fee-inclusive paper capacity; never reserves funds."""
+        now=clock(now)
+        if not self.db.in_transaction:
+            with self.db:
+                self.db.execute('BEGIN')
+                return self.entry_capacity(now)
+        today=now.date().isoformat()
+        spent=sum((money(json.loads(row[0])['planned_loss_usd']) for row in self.db.execute(
+            "SELECT detail FROM events WHERE kind='OPEN' AND substr(at,1,10)=?",(today,))),D('0'))
+        losses=sum((max(-money(row[0]),D('0')) for row in self.db.execute(
+            'SELECT pnl FROM exits WHERE substr(at,1,10)=?',(today,))),D('0'))
+        planned=max(D('0'),D('3')-spent)
+        realized=max(D('0'),D('3')-losses)
+        return {'buying_power_usd':str(min(D('100'),money(self.status()['cash_usd']))),
+                'daily_planned_remaining_usd':str(planned),
+                'daily_realized_remaining_usd':str(realized),
+                'max_new_risk_usd':str(min(D('1'),planned,realized))}
+
+    def expire_queued(self, now=None):
+        """Expire only unfilled proposals, preserving open-position monitoring."""
+        now=clock(now);expired=[]
+        with self.db:
+            self.db.execute('BEGIN IMMEDIATE')
+            for p in self.db.execute("SELECT id,expires FROM proposals WHERE status IN ('Pending','Approved')").fetchall():
+                if parse_time(p['expires'])<=now:
+                    self.db.execute("UPDATE proposals SET status='Expired' WHERE id=?",(p['id'],))
+                    self._event(p['id'],'EXPIRED',{},now);expired.append(p['id'])
+        return expired
+
     def _risk(self, entry, stop, target, qty):
         if not (entry > stop > 0 and target > entry and qty > 0):
             raise GateError('Long-only positive entry > stop and target > entry required')
@@ -118,20 +148,31 @@ class PaperGate:
         if buy*qty*(1+self.fee_rate) > D('100'): raise GateError('Exceeds $100 paper cash including fees')
         return loss
 
-    def propose(self, pid, pair, entry, stop, target, quantity, expires, now=None):
+    def propose(self, pid, pair, entry, stop, target, quantity, expires, now=None, *, evidence=None, require_empty_queue=False):
         now=clock(now); expiry=parse_time(expires)
         if now.tzinfo is None: raise GateError('Timezone required')
         if expiry <= now: raise GateError('Expired at creation')
         if pair not in ('BTC-USD','ETH-USD','SOL-USD'): raise GateError('Unsupported pair')
         e,s,t,q=map(money,(entry,stop,target,quantity))
         risk=self._risk(e,s,t,q)
+        if evidence is not None and 'entry_floor' in evidence:
+            if not s<=money(evidence['entry_floor'])<e: raise GateError('Invalid signal entry floor')
         with self.db:
             self.db.execute('BEGIN IMMEDIATE')
             if self.db.execute("SELECT 1 FROM proposals WHERE status='Open'").fetchone(): raise GateError('Open position exists')
             if self.db.execute('SELECT 1 FROM proposals WHERE id=?',(pid,)).fetchone(): raise GateError('Duplicate proposal')
+            if require_empty_queue:
+                if self.db.execute("SELECT 1 FROM proposals WHERE status IN ('Pending','Approved')").fetchone():
+                    raise GateError('An unresolved proposal already exists')
+                capacity=self.entry_capacity(now)
+                if risk>money(capacity['max_new_risk_usd']): raise GateError('Insufficient remaining risk budget')
+                if e*(1+self.slippage)*(1+self.fee_rate)*q>money(capacity['buying_power_usd']):
+                    raise GateError('Insufficient available paper cash')
             self.db.execute('INSERT INTO proposals VALUES (?,?,?,?,?,?,?,?,?)',
                             (pid,pair,str(e),str(s),str(t),str(q),expiry.isoformat(),'Pending',now.isoformat()))
-            self._event(pid,'PROPOSE',{'risk':str(risk)},now)
+            detail={'risk':str(risk)}
+            if evidence is not None: detail['evidence']=evidence
+            self._event(pid,'PROPOSE',detail,now)
         return {'id':pid,'status':'Pending','planned_loss_usd':str(risk)}
 
     def decide(self, pid, approve, now=None):
@@ -167,20 +208,19 @@ class PaperGate:
             # Only fill a limit-style entry when market is at or below approved entry.
             if price>e: raise GateError('Entry trigger not met')
             if price<=s: raise GateError('Market price already at or below stop')
+            proposal_event=self.db.execute("SELECT detail FROM events WHERE proposal_id=? AND kind='PROPOSE' ORDER BY id LIMIT 1",(pid,)).fetchone()
+            evidence=json.loads(proposal_event['detail']).get('evidence',{}) if proposal_event else {}
+            if 'entry_floor' in evidence and price<=money(evidence['entry_floor']):
+                raise GateError('Breakout signal no longer held')
             risk=self._risk(price,s,t,q)
-            today=now.date().isoformat()
-            spent=D('0')
-            for row in self.db.execute("SELECT detail FROM events WHERE kind='OPEN' AND substr(at,1,10)=?",(today,)):
-                spent+=money(json.loads(row['detail'])['planned_loss_usd'])
-            if spent+risk>D('3'): raise GateError('Daily planned loss cap exceeded')
+            capacity=self.entry_capacity(now)
+            if risk>money(capacity['daily_planned_remaining_usd']): raise GateError('Daily planned loss cap exceeded')
             fill_price=price*(1+self.slippage)
             fee=fill_price*q*self.fee_rate
             cost=fill_price*q+fee
             state=self.status()
             if cost>money(state['cash_usd']): raise GateError('Insufficient available paper cash')
-            realized_losses=sum((max(-money(r[0]),D('0')) for r in self.db.execute(
-                'SELECT pnl FROM exits WHERE substr(at,1,10)=?',(today,))),D('0'))
-            if realized_losses+risk>D('3'): raise GateError('Daily realized loss budget exceeded')
+            if risk>money(capacity['daily_realized_remaining_usd']): raise GateError('Daily realized loss budget exceeded')
             self.db.execute('INSERT INTO fills VALUES (?,?,?,?,?)',(pid,str(fill_price),str(q),str(fee),now.isoformat()))
             self.db.execute('UPDATE paper_account SET cash=? WHERE id=1',(str(money(state['cash_usd'])-cost),))
             self.db.execute("UPDATE proposals SET status='Open' WHERE id=?",(pid,))

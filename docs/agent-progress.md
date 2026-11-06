@@ -1,5 +1,14 @@
 # Trading Finisher progress
 
+**Latest checkpoint (2026-11-06):** [spot scanner and reliability validation](validation-2026-11-06.md).
+The combined automation branch now has opt-in BTC/ETH/SOL daily-breakout research,
+durable scan cooldowns, evidence-bearing Pending proposals, fee-aware sizing and
+exit-first processing. See [the scanner runbook](spot-scanner.md). Explicit paper
+approval remains required. Next meaningful step is a sustained, timestamped paper
+observation run on a durable host, followed by a chronological strategy evaluation;
+software tests and a public-data smoke scan do not establish profitability.
+The September checkpoints below are historical, including their resolved publishing blocker.
+
 **Current checkpoint (2026-09-30):** [Webull quote integration](webull-checkpoint.md).
 Read-only signed Webull quote capture and paper refresh/reviewed exits are implemented.
 88 tests and the offline demo pass on Linux/Python 3.12.14. No credentials are present and
